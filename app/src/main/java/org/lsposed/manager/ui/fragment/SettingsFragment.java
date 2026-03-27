@@ -50,13 +50,13 @@ import org.lsposed.manager.repo.RepoLoader;
 import org.lsposed.manager.ui.activity.MainActivity;
 import org.lsposed.manager.util.BackupUtils;
 import org.lsposed.manager.util.CloudflareDNS;
-import org.lsposed.manager.util.LangList;
 import org.lsposed.manager.util.NavUtil;
 import org.lsposed.manager.util.ShortcutUtil;
 import org.lsposed.manager.util.ThemeUtil;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Locale;
 
 import rikka.core.util.ResourceUtils;
@@ -319,7 +319,11 @@ public class SettingsFragment extends BaseFragment {
                 var tag = language.getValue();
                 var userLocale = App.getLocale();
                 var entries = new ArrayList<CharSequence>();
-                var lstLang = LangList.LOCALES;
+                var lstLang = new String[]{SYSTEM, "en", "zh-CN"};
+                if (!TextUtils.isEmpty(tag) && !SYSTEM.equals(tag) && !Arrays.asList(lstLang).contains(tag)) {
+                    tag = SYSTEM;
+                    language.setValue(SYSTEM);
+                }
                 for (var lang : lstLang) {
                     if (lang.equals(SYSTEM)) {
                         entries.add(getString(rikka.core.R.string.follow_system));

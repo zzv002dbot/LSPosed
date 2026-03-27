@@ -51,8 +51,6 @@ JingMatrix</string>
     <string name="system_inject_fail"><![CDATA[这是极罕见的情况，可能是由 <b>Magisk</b> 或低质 Magisk 模块导致。<br/>请尝试禁用除 Riru 和 LSPosed 外的其他 Magisk 模块，或向开发者提供完整日志。]]></string>
     <string name="system_prop_incorrect_summary">系统属性异常</string>
     <string name="system_prop_incorrect"><![CDATA[一些必须的系统属性被删除或被修改。<br/>模块可能会随机失效。]]></string>
-    <string name="need_update">需要更新</string>
-    <string name="please_update_summary">请安装新版 LSPosed</string>
     <string name="developer_warning_title">给模块开发者的提示</string>
     <string name="developer_warning_summary">请在 Android Studio 上禁用部署优化，或使用 `gradlew installDebug` 命令进行安装，否则无法更新模块。</string>
     <string name="info_api_version">API 版本</string>
@@ -71,8 +69,6 @@ JingMatrix</string>
     <string name="mount_failed">挂载失败</string>
     <string name="selinux_permissive">SELinux 处于宽容模式</string>
     <string name="sepolicy_incorrect">SELinux 规则异常</string>
-    <string name="update_lsposed">更新 LSPosed</string>
-    <string name="update_lsposed_msg">确认更新 LSPosed? 设备将会在完成更新后自动重启。</string>
     <string name="info_copied">已复制到剪贴板</string>
     <!-- WelcomeDialog -->
     <string name="parasitic_welcome">欢迎使用 LSPosed</string>
