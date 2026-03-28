@@ -594,6 +594,76 @@ private fun AnimatedPage(content: @Composable () -> Unit) {
     }
 }
 
+private sealed class ScreenLoadState<out T> {
+    object Loading : ScreenLoadState<Nothing>()
+    data class Ready<T>(val value: T) : ScreenLoadState<T>()
+    data class Error(val message: String) : ScreenLoadState<Nothing>()
+}
+
+private data class ModuleRowModel(
+    val module: ModuleUtil.InstalledModule,
+    val appName: String,
+    val description: String?,
+    val upgradable: Boolean,
+    val enabled: Boolean,
+)
+
+private data class ModulesUiData(
+    val users: List<UserInfo>,
+    val rows: List<ModuleRowModel>,
+)
+
+private data class RepoRowModel(
+    val module: OnlineModule,
+    val packageName: String,
+    val title: String,
+    val summary: String?,
+    val updatedText: String?,
+    val upgradable: Boolean,
+)
+
+private data class RepoUiData(
+    val rows: List<RepoRowModel>,
+    val upgradableCount: Int,
+)
+
+@Composable
+private fun LoadingStatePanel(@StringRes textRes: Int = R.string.loading) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            CircularProgressIndicator()
+            Text(stringResourceCompat(textRes))
+        }
+    }
+}
+
+@Composable
+private fun ErrorStatePanel(
+    title: String,
+    message: String,
+    onRetry: () -> Unit,
+) {
+    Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+        ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Button(onClick = onRetry) {
+                    Text(stringResourceCompat(android.R.string.ok))
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun FloatingBottomBar(
     navController: NavController,
@@ -986,6 +1056,8 @@ private fun ModulesScreen(
     var search by rememberSaveable { mutableStateOf("") }
     var selectedTabIndex by rememberSaveable { mutableIntStateOf(0) }
     var showInstallDialog by remember { mutableStateOf(false) }
+    var reloadNonce by remember { mutableIntStateOf(0) }
+    var uiState by remember { mutableStateOf<ScreenLoadState<ModulesUiData>>(ScreenLoadState.Loading) }
 
     DisposableEffect(Unit) {
         val moduleListener = object : ModuleUtil.ModuleListener {
@@ -1010,26 +1082,71 @@ private fun ModulesScreen(
         }
     }
 
-    val users = remember(refreshToken) { moduleUtil.users ?: emptyList() }
-    val user = users.getOrNull(selectedTabIndex)
-    if (selectedTabIndex >= users.size && users.isNotEmpty()) {
-        selectedTabIndex = 0
-    }
-
-    val moduleListResult = remember(refreshToken, selectedTabIndex, search) {
-        runCatching {
-            val all = moduleUtil.modules?.values?.toList().orEmpty()
-            val targetUser = users.getOrNull(selectedTabIndex)?.id
-            all.filter { targetUser == null || it.userId == targetUser }
-                .filter {
-                    if (search.isBlank()) true
-                    else it.getAppName().contains(search, ignoreCase = true) || it.packageName.contains(search, ignoreCase = true)
-                }
-                .sortedBy { it.getAppName().lowercase(Locale.ROOT) }
+    fun triggerReload() {
+        reloadNonce += 1
+        scope.launch(Dispatchers.IO) {
+            moduleUtil.reloadInstalledModules()
+            repoLoader.loadLocalData(true)
         }
     }
-    val moduleList = moduleListResult.getOrElse { emptyList() }
-    val moduleListError = moduleListResult.exceptionOrNull()
+
+    LaunchedEffect(Unit) {
+        if (!moduleUtil.isModulesLoaded) {
+            scope.launch(Dispatchers.IO) {
+                moduleUtil.reloadInstalledModules()
+            }
+        }
+    }
+
+    LaunchedEffect(refreshToken, selectedTabIndex, search, reloadNonce) {
+        if (!moduleUtil.isModulesLoaded) {
+            uiState = ScreenLoadState.Loading
+            return@LaunchedEffect
+        }
+        uiState = ScreenLoadState.Loading
+        uiState = runCatching {
+            withContext(Dispatchers.Default) {
+                val users = moduleUtil.users ?: emptyList()
+                val normalizedIndex = if (users.isEmpty()) 0 else selectedTabIndex.coerceIn(0, users.lastIndex)
+                val targetUserId = users.getOrNull(normalizedIndex)?.id
+
+                val rows = moduleUtil.modules?.values?.asSequence().orEmpty()
+                    .filter { targetUserId == null || it.userId == targetUserId }
+                    .map { module ->
+                        val appName = runCatching { module.getAppName() }.getOrElse { module.packageName }
+                        val description = runCatching { module.getDescription() }.getOrNull()?.takeIf { it.isNotBlank() }
+                        ModuleRowModel(
+                            module = module,
+                            appName = appName,
+                            description = description,
+                            upgradable = repoLoader.getModuleLatestVersion(module.packageName)?.upgradable(module.versionCode, module.versionName) == true,
+                            enabled = moduleUtil.isModuleEnabled(module.packageName),
+                        )
+                    }
+                    .filter { row ->
+                        if (search.isBlank()) true
+                        else row.appName.contains(search, ignoreCase = true) || row.module.packageName.contains(search, ignoreCase = true)
+                    }
+                    .sortedBy { it.appName.lowercase(Locale.ROOT) }
+                    .toList()
+
+                ModulesUiData(users = users, rows = rows)
+            }
+        }.fold(
+            onSuccess = { ScreenLoadState.Ready(it) },
+            onFailure = { ScreenLoadState.Error(it.message ?: "Failed to load modules") },
+        )
+    }
+
+    val users = (uiState as? ScreenLoadState.Ready)?.value?.users.orEmpty()
+    val user = users.getOrNull(selectedTabIndex)
+    val moduleRows = (uiState as? ScreenLoadState.Ready)?.value?.rows.orEmpty()
+
+    LaunchedEffect(users) {
+        if (users.isNotEmpty() && selectedTabIndex > users.lastIndex) {
+            selectedTabIndex = 0
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -1037,12 +1154,7 @@ private fun ModulesScreen(
                 title = stringResourceCompat(R.string.Modules),
                 query = search,
                 onQueryChange = { search = it },
-                onRefresh = {
-                    scope.launch(Dispatchers.IO) {
-                        moduleUtil.reloadInstalledModules()
-                        repoLoader.loadLocalData(true)
-                    }
-                },
+                onRefresh = { triggerReload() },
                 extraActions = {
                     IconButton(onClick = onOpenRepo) {
                         Icon(Icons.Filled.CloudDownload, contentDescription = null)
@@ -1075,83 +1187,78 @@ private fun ModulesScreen(
                 }
             }
 
-            if (users.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        CircularProgressIndicator()
-                        Text(stringResourceCompat(R.string.loading))
-                    }
+            when (val state = uiState) {
+                ScreenLoadState.Loading -> {
+                    LoadingStatePanel()
                 }
-            } else if (moduleListError != null && moduleList.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(
-                                text = stringResourceCompat(R.string.Modules),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            Text(
-                                text = moduleListError.message ?: "Failed to load modules",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                is ScreenLoadState.Error -> {
+                    ErrorStatePanel(
+                        title = stringResourceCompat(R.string.Modules),
+                        message = state.message,
+                        onRetry = { triggerReload() },
+                    )
+                }
+                is ScreenLoadState.Ready -> {
+                    if (moduleRows.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(stringResourceCompat(R.string.list_empty))
                         }
-                    }
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    items(moduleList, key = { "${it.packageName}:${it.userId}" }) { module ->
-                        val upgradable = repoLoader.getModuleLatestVersion(module.packageName)?.upgradable(module.versionCode, module.versionName) == true
-                        ModuleCard(
-                            module = module,
-                            upgradable = upgradable,
-                            enabled = moduleUtil.isModuleEnabled(module.packageName),
-                            onEnabledChange = { enabled ->
-                                scope.launch(Dispatchers.IO) {
-                                    val result = moduleUtil.setModuleEnabled(module.packageName, enabled)
-                                    withContext(Dispatchers.Main) {
-                                        if (!result) {
-                                            scope.launch {
-                                                snackbarHostState.showSnackbar(stringResourceCompat(R.string.failed_to_save_scope_list))
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            items(moduleRows, key = { "${it.module.packageName}:${it.module.userId}" }) { row ->
+                                ModuleCard(
+                                    module = row.module,
+                                    appName = row.appName,
+                                    description = row.description,
+                                    upgradable = row.upgradable,
+                                    enabled = row.enabled,
+                                    onEnabledChange = { enabled ->
+                                        scope.launch(Dispatchers.IO) {
+                                            val result = moduleUtil.setModuleEnabled(row.module.packageName, enabled)
+                                            withContext(Dispatchers.Main) {
+                                                if (!result) {
+                                                    scope.launch {
+                                                        snackbarHostState.showSnackbar(stringResourceCompat(R.string.failed_to_save_scope_list))
+                                                    }
+                                                } else {
+                                                    refreshToken += 1
+                                                }
                                             }
-                                        } else {
-                                            refreshToken += 1
                                         }
-                                    }
-                                }
-                            },
-                            onScopeClick = { onOpenScope(module.packageName, module.userId) },
-                            onLaunch = {
-                                val intent = AppHelper.getSettingsIntent(module.packageName, module.userId)
-                                if (intent != null) {
-                                    ConfigManager.startActivityAsUserWithFeature(intent, module.userId)
-                                }
-                            },
-                            onAppInfo = {
-                                val intent = Intent(Intent.ACTION_SHOW_APP_INFO).apply {
-                                    putExtra(Intent.EXTRA_PACKAGE_NAME, module.packageName)
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                ConfigManager.startActivityAsUserWithFeature(intent, module.userId)
-                            },
-                            onForceStop = {
-                                ConfigManager.forceStopPackage(module.packageName, module.userId)
-                            },
-                            onCompileSpeed = {
-                                CompileDialogFragment.speed(activity.supportFragmentManager, module.app)
-                            },
-                            onUninstall = {
-                                scope.launch(Dispatchers.IO) {
-                                    ConfigManager.uninstallPackage(module.packageName, module.userId)
-                                    moduleUtil.reloadInstalledModules()
-                                }
-                            },
-                        )
+                                    },
+                                    onScopeClick = { onOpenScope(row.module.packageName, row.module.userId) },
+                                    onLaunch = {
+                                        val intent = AppHelper.getSettingsIntent(row.module.packageName, row.module.userId)
+                                        if (intent != null) {
+                                            ConfigManager.startActivityAsUserWithFeature(intent, row.module.userId)
+                                        }
+                                    },
+                                    onAppInfo = {
+                                        val intent = Intent(Intent.ACTION_SHOW_APP_INFO).apply {
+                                            putExtra(Intent.EXTRA_PACKAGE_NAME, row.module.packageName)
+                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        }
+                                        ConfigManager.startActivityAsUserWithFeature(intent, row.module.userId)
+                                    },
+                                    onForceStop = {
+                                        ConfigManager.forceStopPackage(row.module.packageName, row.module.userId)
+                                    },
+                                    onCompileSpeed = {
+                                        CompileDialogFragment.speed(activity.supportFragmentManager, row.module.app)
+                                    },
+                                    onUninstall = {
+                                        scope.launch(Dispatchers.IO) {
+                                            ConfigManager.uninstallPackage(row.module.packageName, row.module.userId)
+                                            moduleUtil.reloadInstalledModules()
+                                        }
+                                    },
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -1160,11 +1267,22 @@ private fun ModulesScreen(
 
     if (showInstallDialog && user != null) {
         val installCandidates = remember(refreshToken, user.id) {
-            val all = moduleUtil.modules?.values?.toList().orEmpty()
-            val installedPackages = all.filter { it.userId == user.id }.map { it.packageName }.toSet()
-            all.filter { it.userId != user.id && !installedPackages.contains(it.packageName) }
-                .distinctBy { it.packageName }
-                .sortedBy { it.getAppName().lowercase(Locale.ROOT) }
+            runCatching {
+                val all = moduleUtil.modules?.values?.toList().orEmpty()
+                val installedPackages = all.filter { it.userId == user.id }.map { it.packageName }.toSet()
+                all.filter { it.userId != user.id && !installedPackages.contains(it.packageName) }
+                    .distinctBy { it.packageName }
+                    .map { module ->
+                        ModuleRowModel(
+                            module = module,
+                            appName = runCatching { module.getAppName() }.getOrElse { module.packageName },
+                            description = null,
+                            upgradable = false,
+                            enabled = false,
+                        )
+                    }
+                    .sortedBy { it.appName.lowercase(Locale.ROOT) }
+            }.getOrElse { emptyList() }
         }
 
         AlertDialog(
@@ -1175,20 +1293,20 @@ private fun ModulesScreen(
                     if (installCandidates.isEmpty()) {
                         Text(stringResourceCompat(R.string.list_empty))
                     } else {
-                        installCandidates.forEach { module ->
+                        installCandidates.forEach { row ->
                             TextButton(
                                 onClick = {
                                     showInstallDialog = false
                                     scope.launch(Dispatchers.IO) {
-                                        val ok = ConfigManager.installExistingPackageAsUser(module.packageName, user.id)
+                                        val ok = ConfigManager.installExistingPackageAsUser(row.module.packageName, user.id)
                                         if (ok) {
-                                            moduleUtil.reloadSingleModule(module.packageName, user.id)
+                                            moduleUtil.reloadSingleModule(row.module.packageName, user.id)
                                         }
                                         withContext(Dispatchers.Main) {
                                             scope.launch {
                                                 snackbarHostState.showSnackbar(
                                                     if (ok) {
-                                                        stringResourceCompat(R.string.module_installed, module.getAppName(), user.name)
+                                                        stringResourceCompat(R.string.module_installed, row.appName, user.name)
                                                     } else {
                                                         stringResourceCompat(R.string.module_install_failed)
                                                     },
@@ -1200,9 +1318,9 @@ private fun ModulesScreen(
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
                                 Column(modifier = Modifier.fillMaxWidth()) {
-                                    Text(module.getAppName(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(row.appName, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     Text(
-                                        module.packageName,
+                                        row.module.packageName,
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 1,
@@ -1226,6 +1344,8 @@ private fun ModulesScreen(
 @Composable
 private fun ModuleCard(
     module: ModuleUtil.InstalledModule,
+    appName: String,
+    description: String?,
     upgradable: Boolean,
     enabled: Boolean,
     onEnabledChange: (Boolean) -> Unit,
@@ -1249,16 +1369,16 @@ private fun ModuleCard(
             ) {
                 AppIconView(module.pkg)
                 Column(modifier = Modifier.weight(1f).clickable(onClick = onScopeClick), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(module.getAppName(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(appName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text(module.packageName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(
                         text = "${module.versionName} (${module.versionCode})",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    if (!module.getDescription().isNullOrBlank()) {
+                    if (!description.isNullOrBlank()) {
                         Text(
-                            module.getDescription(),
+                            description,
                             style = MaterialTheme.typography.bodySmall,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
@@ -1638,6 +1758,8 @@ private fun RepoScreen(
 
     var query by rememberSaveable { mutableStateOf("") }
     var refreshToken by remember { mutableIntStateOf(0) }
+    var reloadNonce by remember { mutableIntStateOf(0) }
+    var uiState by remember { mutableStateOf<ScreenLoadState<RepoUiData>>(ScreenLoadState.Loading) }
 
     DisposableEffect(Unit) {
         val repoListener = object : RepoLoader.RepoListener {
@@ -1671,59 +1793,132 @@ private fun RepoScreen(
 
     val sortMode = remember(refreshToken) { prefs.getInt("repo_sort", 0) }
     val upgradableFirst = remember(refreshToken) { prefs.getBoolean("upgradable_first", true) }
-    val repoIsLoaded = remember(refreshToken) { repoLoader.isRepoLoaded }
     val channel = remember(refreshToken) {
         prefs.getString("update_channel", activity.resources.getStringArray(R.array.update_channel_values).first())
             ?: activity.resources.getStringArray(R.array.update_channel_values).first()
     }
 
-    val list = remember(refreshToken, query, sortMode, upgradableFirst, channel) {
-        val modules = repoLoader.onlineModules?.toList().orEmpty().filter { it.isHide != true }
-
-        val filtered = modules.filter {
-            if (query.isBlank()) true
-            else {
-                val name = it.description ?: ""
-                val pkg = it.name ?: ""
-                val summary = it.summary ?: ""
-                name.contains(query, true) || pkg.contains(query, true) || summary.contains(query, true)
+    fun triggerReload(forceRemote: Boolean = false) {
+        reloadNonce += 1
+        scope.launch(Dispatchers.IO) {
+            if (forceRemote) {
+                repoLoader.loadRemoteData()
+            } else if (!repoLoader.isRepoLoaded) {
+                repoLoader.loadLocalData(true)
             }
-        }
-
-        val byName = compareBy<OnlineModule> { (it.description ?: "").lowercase(Locale.ROOT) }
-        val byTime = compareByDescending<OnlineModule> { parseInstantOrZero(repoLoader.getLatestReleaseTime(it.name, channel) ?: it.latestReleaseTime) }
-        val base = if (sortMode == 1) byTime else byName
-
-        filtered.sortedWith { a, b ->
-            val au = isUpgradable(moduleUtil, repoLoader, a)
-            val bu = isUpgradable(moduleUtil, repoLoader, b)
-            when {
-                upgradableFirst && au != bu -> if (au) -1 else 1
-                else -> base.compare(a, b)
+            if (!moduleUtil.isModulesLoaded) {
+                moduleUtil.reloadInstalledModules()
             }
         }
     }
 
-    val upgradableCount = remember(refreshToken, list) {
-        list.count { isUpgradable(moduleUtil, repoLoader, it) }
+    LaunchedEffect(Unit) {
+        if (!repoLoader.isRepoLoaded || !moduleUtil.isModulesLoaded) {
+            triggerReload(forceRemote = false)
+        }
+    }
+
+    LaunchedEffect(refreshToken, query, sortMode, upgradableFirst, channel, reloadNonce) {
+        if (!repoLoader.isRepoLoaded) {
+            uiState = ScreenLoadState.Loading
+            return@LaunchedEffect
+        }
+        uiState = ScreenLoadState.Loading
+        uiState = runCatching {
+            withContext(Dispatchers.Default) {
+                val installedByPackage = moduleUtil.modules
+                    ?.values
+                    ?.groupBy { it.packageName }
+                    ?.mapValues { (_, versions) ->
+                        versions.maxByOrNull { it.versionCode } ?: versions.first()
+                    }
+                    .orEmpty()
+
+                val modules = repoLoader.onlineModules?.toList().orEmpty()
+                    .filter { it.isHide != true && !it.name.isNullOrBlank() }
+                    .filter { module ->
+                        if (query.isBlank()) {
+                            true
+                        } else {
+                            val title = module.description ?: ""
+                            val pkg = module.name ?: ""
+                            val summary = module.summary ?: ""
+                            title.contains(query, true) || pkg.contains(query, true) || summary.contains(query, true)
+                        }
+                    }
+
+                val upgradableByPackage = modules.associate { module ->
+                    val pkg = module.name.orEmpty()
+                    val installed = installedByPackage[pkg]
+                    val latest = repoLoader.getModuleLatestVersion(pkg)
+                    pkg to (installed != null && latest != null && latest.upgradable(installed.versionCode, installed.versionName))
+                }
+
+                val byName = compareBy<OnlineModule> { (it.description ?: it.name ?: "").lowercase(Locale.ROOT) }
+                val byTime = compareByDescending<OnlineModule> {
+                    parseInstantOrZero(repoLoader.getLatestReleaseTime(it.name, channel) ?: it.latestReleaseTime)
+                }
+                val baseComparator = if (sortMode == 1) byTime else byName
+
+                val sorted = modules.sortedWith { a, b ->
+                    val aUpgradable = upgradableByPackage[a.name] == true
+                    val bUpgradable = upgradableByPackage[b.name] == true
+                    when {
+                        upgradableFirst && aUpgradable != bUpgradable -> if (aUpgradable) -1 else 1
+                        else -> baseComparator.compare(a, b)
+                    }
+                }
+
+                val formatter = DateTimeFormatter.ofLocalizedDate(FormatStyle.SHORT)
+                    .withLocale(App.getLocale())
+                    .withZone(ZoneId.systemDefault())
+
+                val rows = sorted.mapNotNull { module ->
+                    val pkg = module.name ?: return@mapNotNull null
+                    val updatedRaw = repoLoader.getLatestReleaseTime(pkg, channel) ?: module.latestReleaseTime
+                    val updatedText = if (!updatedRaw.isNullOrBlank()) {
+                        runCatching { formatter.format(Instant.parse(updatedRaw)) }.getOrDefault(updatedRaw)
+                    } else {
+                        null
+                    }
+                    RepoRowModel(
+                        module = module,
+                        packageName = pkg,
+                        title = module.description ?: pkg,
+                        summary = module.summary?.takeIf { it.isNotBlank() },
+                        updatedText = updatedText,
+                        upgradable = upgradableByPackage[pkg] == true,
+                    )
+                }
+                RepoUiData(rows = rows, upgradableCount = rows.count { it.upgradable })
+            }
+        }.fold(
+            onSuccess = { ScreenLoadState.Ready(it) },
+            onFailure = { ScreenLoadState.Error(it.message ?: "Failed to load repository") },
+        )
+    }
+
+    val repoData = (uiState as? ScreenLoadState.Ready)?.value
+    val subtitle = when (val state = uiState) {
+        ScreenLoadState.Loading -> stringResourceCompat(R.string.loading)
+        is ScreenLoadState.Error -> stringResourceCompat(R.string.repo_load_failed, state.message)
+        is ScreenLoadState.Ready -> {
+            if (state.value.upgradableCount > 0) {
+                activity.resources.getQuantityString(R.plurals.module_repo_upgradable, state.value.upgradableCount, state.value.upgradableCount)
+            } else {
+                stringResourceCompat(R.string.module_repo_up_to_date)
+            }
+        }
     }
 
     Scaffold(
         topBar = {
             SearchTopBar(
                 title = stringResourceCompat(R.string.module_repo),
-                subtitle = if (upgradableCount > 0) {
-                    activity.resources.getQuantityString(R.plurals.module_repo_upgradable, upgradableCount, upgradableCount)
-                } else {
-                    stringResourceCompat(R.string.module_repo_up_to_date)
-                },
+                subtitle = subtitle,
                 query = query,
                 onQueryChange = { query = it },
-                onRefresh = {
-                    scope.launch(Dispatchers.IO) {
-                        repoLoader.loadRemoteData()
-                    }
-                },
+                onRefresh = { triggerReload(forceRemote = true) },
                 extraActions = {
                     var expanded by remember { mutableStateOf(false) }
                     IconButton(onClick = { expanded = true }) {
@@ -1740,63 +1935,69 @@ private fun RepoScreen(
                             expanded = false
                             refreshToken += 1
                         })
-                        DropdownMenuItem(text = { Text(stringResourceCompat(R.string.sort_upgradable_first)) }, trailingIcon = {
-                            Checkbox(checked = upgradableFirst, onCheckedChange = null)
-                        }, onClick = {
-                            prefs.edit { putBoolean("upgradable_first", !upgradableFirst) }
-                            expanded = false
-                            refreshToken += 1
-                        })
+                        DropdownMenuItem(
+                            text = { Text(stringResourceCompat(R.string.sort_upgradable_first)) },
+                            trailingIcon = { Checkbox(checked = upgradableFirst, onCheckedChange = null) },
+                            onClick = {
+                                prefs.edit { putBoolean("upgradable_first", !upgradableFirst) }
+                                expanded = false
+                                refreshToken += 1
+                            },
+                        )
                     }
                 },
             )
         },
     ) { innerPadding ->
-        if (!repoIsLoaded) {
-            Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CircularProgressIndicator()
-                    Text(stringResourceCompat(R.string.loading))
+        when (val state = uiState) {
+            ScreenLoadState.Loading -> {
+                Box(modifier = Modifier.padding(innerPadding)) {
+                    LoadingStatePanel()
                 }
             }
-        } else if (list.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
-                Text(stringResourceCompat(R.string.list_empty))
+            is ScreenLoadState.Error -> {
+                Box(modifier = Modifier.padding(innerPadding)) {
+                    ErrorStatePanel(
+                        title = stringResourceCompat(R.string.module_repo),
+                        message = state.message,
+                        onRetry = { triggerReload(forceRemote = true) },
+                    )
+                }
             }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(innerPadding),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                items(list, key = { it.name ?: it.hashCode().toString() }) { module ->
-                    val pkg = module.name ?: return@items
-                    val upgraded = isUpgradable(moduleUtil, repoLoader, module)
-                    ElevatedCard(
-                        modifier = Modifier.fillMaxWidth().clickable {
-                            onOpenRepoItem(pkg)
-                        },
+            is ScreenLoadState.Ready -> {
+                if (repoData == null || repoData.rows.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
+                        Text(stringResourceCompat(R.string.list_empty))
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize().padding(innerPadding),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(module.description ?: pkg, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text(pkg, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            if (!module.summary.isNullOrBlank()) {
-                                Text(module.summary ?: "", maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            }
-                            val releaseTime = repoLoader.getLatestReleaseTime(pkg, channel) ?: module.latestReleaseTime
-                            if (!releaseTime.isNullOrBlank()) {
-                                val formatter = DateTimeFormatter.ofLocalizedDate(FormatStyle.SHORT)
-                                    .withLocale(App.getLocale())
-                                    .withZone(ZoneId.systemDefault())
-                                val formatted = runCatching { formatter.format(Instant.parse(releaseTime)) }.getOrDefault(releaseTime)
-                                Text(
-                                    stringResourceCompat(R.string.module_repo_updated_time, formatted),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            if (upgraded) {
-                                AssistChip(onClick = {}, label = { Text(stringResourceCompat(R.string.update_available)) })
+                        items(repoData.rows, key = { it.packageName }) { row ->
+                            ElevatedCard(
+                                modifier = Modifier.fillMaxWidth().clickable {
+                                    onOpenRepoItem(row.packageName)
+                                },
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(row.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                    Text(row.packageName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    if (!row.summary.isNullOrBlank()) {
+                                        Text(row.summary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    }
+                                    if (!row.updatedText.isNullOrBlank()) {
+                                        Text(
+                                            stringResourceCompat(R.string.module_repo_updated_time, row.updatedText),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                    if (row.upgradable) {
+                                        AssistChip(onClick = {}, label = { Text(stringResourceCompat(R.string.update_available)) })
+                                    }
+                                }
                             }
                         }
                     }
@@ -2830,13 +3031,6 @@ private fun computeRepoUpgradableCount(moduleUtil: ModuleUtil, repoLoader: RepoL
         }
     }
     return count
-}
-
-private fun isUpgradable(moduleUtil: ModuleUtil, repoLoader: RepoLoader, module: OnlineModule): Boolean {
-    val pkg = module.name ?: return false
-    val installed = moduleUtil.getModule(pkg) ?: return false
-    val latest = repoLoader.getModuleLatestVersion(pkg) ?: return false
-    return latest.upgradable(installed.versionCode, installed.versionName)
 }
 
 private fun parseInstantOrZero(raw: String?): Instant {
