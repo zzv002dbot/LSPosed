@@ -7,6 +7,8 @@ import javax.inject.Inject
 import org.gradle.api.provider.ValueSource
 import org.gradle.api.provider.ValueSourceParameters
 import org.gradle.process.ExecOperations
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.dsl.KotlinAndroidProjectExtension
 
 plugins {
     alias(libs.plugins.agp.lib) apply false
@@ -149,6 +151,12 @@ subprojects {
         extensions.configure(JavaPluginExtension::class.java) {
             sourceCompatibility = androidSourceCompatibility
             targetCompatibility = androidTargetCompatibility
+        }
+    }
+
+    plugins.withId("org.jetbrains.kotlin.android") {
+        extensions.configure(KotlinAndroidProjectExtension::class.java) {
+            compilerOptions { jvmTarget.set(JvmTarget.JVM_21) }
         }
     }
 }

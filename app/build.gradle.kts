@@ -18,6 +18,7 @@
  */
 
 import java.time.Instant
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.agp.app)
@@ -45,8 +46,6 @@ android {
         viewBinding = true
         buildConfig = true
     }
-
-    kotlinOptions { jvmTarget = "21" }
 
     defaultConfig {
         applicationId = defaultManagerPackageName
@@ -76,6 +75,10 @@ android {
 
     sourceSets { named("main") { res { srcDirs("src/common/res") } } }
     namespace = defaultManagerPackageName
+}
+
+kotlin {
+    compilerOptions { jvmTarget.set(JvmTarget.JVM_21) }
 }
 
 autoResConfig {
