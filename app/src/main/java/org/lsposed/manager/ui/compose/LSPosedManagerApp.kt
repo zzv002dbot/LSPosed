@@ -18,8 +18,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -63,7 +64,6 @@ import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Article
 import androidx.compose.material.icons.filled.Backup
-import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.ContentCopy
@@ -150,6 +150,7 @@ import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.navigation.NavController
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -213,6 +214,7 @@ private object Routes {
 
 private data class BottomBarDestination(
     val route: String,
+    val enabled: Boolean,
     @StringRes val label: Int,
     val selectedIcon: androidx.compose.ui.graphics.vector.ImageVector,
     val unselectedIcon: androidx.compose.ui.graphics.vector.ImageVector,
@@ -319,54 +321,43 @@ fun LSPosedManagerApp(
         val magiskInstalled = remember(uiTick) { ConfigManager.isMagiskInstalled() }
 
         val bottomDestinations = remember(binderAlive, magiskInstalled, modulesBadge, repoBadge) {
-            buildList {
-                if (magiskInstalled) {
-                    add(
-                        BottomBarDestination(
-                            route = Routes.REPO,
-                            label = R.string.module_repo,
-                            selectedIcon = Icons.Filled.CloudDownload,
-                            unselectedIcon = Icons.Filled.CloudDownload,
-                        ),
-                    )
-                }
-                if (binderAlive) {
-                    add(
-                        BottomBarDestination(
-                            route = Routes.MODULES,
-                            label = R.string.Modules,
-                            selectedIcon = Icons.Filled.Extension,
-                            unselectedIcon = Icons.Outlined.Extension,
-                        ),
-                    )
-                }
-                add(
-                    BottomBarDestination(
-                        route = Routes.HOME,
-                        label = R.string.overview,
-                        selectedIcon = Icons.Filled.Home,
-                        unselectedIcon = Icons.Outlined.Home,
-                    ),
-                )
-                if (binderAlive) {
-                    add(
-                        BottomBarDestination(
-                            route = Routes.LOGS,
-                            label = R.string.Logs,
-                            selectedIcon = Icons.Filled.Article,
-                            unselectedIcon = Icons.Filled.Article,
-                        ),
-                    )
-                }
-                add(
-                    BottomBarDestination(
-                        route = Routes.SETTINGS,
-                        label = R.string.Settings,
-                        selectedIcon = Icons.Filled.Settings,
-                        unselectedIcon = Icons.Outlined.Settings,
-                    ),
-                )
-            }
+            listOf(
+                BottomBarDestination(
+                    route = Routes.HOME,
+                    enabled = true,
+                    label = R.string.overview,
+                    selectedIcon = Icons.Filled.Home,
+                    unselectedIcon = Icons.Outlined.Home,
+                ),
+                BottomBarDestination(
+                    route = Routes.MODULES,
+                    enabled = binderAlive,
+                    label = R.string.Modules,
+                    selectedIcon = Icons.Filled.Extension,
+                    unselectedIcon = Icons.Outlined.Extension,
+                ),
+                BottomBarDestination(
+                    route = Routes.REPO,
+                    enabled = magiskInstalled,
+                    label = R.string.module_repo,
+                    selectedIcon = Icons.Filled.CloudDownload,
+                    unselectedIcon = Icons.Filled.CloudDownload,
+                ),
+                BottomBarDestination(
+                    route = Routes.LOGS,
+                    enabled = binderAlive,
+                    label = R.string.Logs,
+                    selectedIcon = Icons.Filled.Article,
+                    unselectedIcon = Icons.Filled.Article,
+                ),
+                BottomBarDestination(
+                    route = Routes.SETTINGS,
+                    enabled = true,
+                    label = R.string.Settings,
+                    selectedIcon = Icons.Filled.Settings,
+                    unselectedIcon = Icons.Outlined.Settings,
+                ),
+            )
         }
 
         val bottomRoutes = remember(bottomDestinations) { bottomDestinations.map { it.route }.toSet() }
@@ -374,6 +365,18 @@ fun LSPosedManagerApp(
         val currentRoute = backStackEntry?.destination?.route
 
         val isBottomRoute = currentRoute in bottomRoutes
+
+        val navigateTopLevel: (String) -> Unit = remember(navController) {
+            { route ->
+                navController.navigate(route) {
+                    launchSingleTop = true
+                    restoreState = true
+                    popUpTo(navController.graph.findStartDestination().id) {
+                        saveState = true
+                    }
+                }
+            }
+        }
 
         BackHandler(enabled = !isBottomRoute) {
             navController.popBackStack()
@@ -432,59 +435,68 @@ fun LSPosedManagerApp(
                         .nestedScroll(scrollConnection),
                 ) {
                     composable(Routes.HOME) {
-                        HomeScreen(
-                            onOpenIssue = { NavUtil.startURL(activity, "https://github.com/JingMatrix/LSPosed/issues/new/choose") },
-                            onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
-                            onNavigateToModules = {
-                                if (binderAlive) navController.navigate(Routes.MODULES)
-                            },
-                            onNavigateToRepo = {
-                                if (magiskInstalled) navController.navigate(Routes.REPO)
-                            },
-                            modulesEnabledCount = modulesBadge,
-                        )
+                        AnimatedPage {
+                            HomeScreen(
+                                onNavigateToSettings = { navigateTopLevel(Routes.SETTINGS) },
+                                onNavigateToModules = {
+                                    if (binderAlive) navigateTopLevel(Routes.MODULES)
+                                },
+                                onNavigateToRepo = {
+                                    if (magiskInstalled) navigateTopLevel(Routes.REPO)
+                                },
+                                modulesEnabledCount = modulesBadge,
+                            )
+                        }
                     }
 
                     composable(Routes.MODULES) {
-                        if (!binderAlive) {
-                            DisabledScreen(R.string.not_install_summary)
-                        } else {
-                            ModulesScreen(
-                                activity = activity,
-                                onOpenScope = { pkg, userId ->
-                                    navController.navigate(Routes.appList(pkg, userId))
-                                },
-                                onOpenRepo = { navController.navigate(Routes.REPO) },
-                                snackbarHostState = snackbarHostState,
-                            )
+                        AnimatedPage {
+                            if (!binderAlive) {
+                                DisabledScreen(R.string.not_install_summary)
+                            } else {
+                                ModulesScreen(
+                                    activity = activity,
+                                    onOpenScope = { pkg, userId ->
+                                        navController.navigate(Routes.appList(pkg, userId))
+                                    },
+                                    onOpenRepo = { navigateTopLevel(Routes.REPO) },
+                                    snackbarHostState = snackbarHostState,
+                                )
+                            }
                         }
                     }
 
                     composable(Routes.REPO) {
-                        if (!magiskInstalled) {
-                            DisabledScreen(R.string.install_summary)
-                        } else {
-                            RepoScreen(
-                                activity = activity,
-                                onOpenRepoItem = { pkg -> navController.navigate(Routes.repoItem(pkg)) },
-                                snackbarHostState = snackbarHostState,
-                            )
+                        AnimatedPage {
+                            if (!magiskInstalled) {
+                                DisabledScreen(R.string.install_summary)
+                            } else {
+                                RepoScreen(
+                                    activity = activity,
+                                    onOpenRepoItem = { pkg -> navController.navigate(Routes.repoItem(pkg)) },
+                                    snackbarHostState = snackbarHostState,
+                                )
+                            }
                         }
                     }
 
                     composable(Routes.LOGS) {
-                        if (!binderAlive) {
-                            DisabledScreen(R.string.not_install_summary)
-                        } else {
-                            LogsScreen(snackbarHostState = snackbarHostState)
+                        AnimatedPage {
+                            if (!binderAlive) {
+                                DisabledScreen(R.string.not_install_summary)
+                            } else {
+                                LogsScreen(snackbarHostState = snackbarHostState)
+                            }
                         }
                     }
 
                     composable(Routes.SETTINGS) {
-                        SettingsScreen(
-                            activity = activity,
-                            snackbarHostState = snackbarHostState,
-                        )
+                        AnimatedPage {
+                            SettingsScreen(
+                                activity = activity,
+                                snackbarHostState = snackbarHostState,
+                            )
+                        }
                     }
 
                     composable(
@@ -522,14 +534,21 @@ fun LSPosedManagerApp(
                 AnimatedVisibility(
                     visible = showBottomBar && isBottomRoute,
                     modifier = Modifier.align(Alignment.BottomCenter),
-                    enter = slideInVertically { it } + fadeIn(),
-                    exit = slideOutVertically { it } + fadeOut(),
+                    enter = slideInVertically(
+                        animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
+                        initialOffsetY = { it / 2 },
+                    ) + fadeIn(animationSpec = tween(220)),
+                    exit = slideOutVertically(
+                        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+                        targetOffsetY = { it / 2 },
+                    ) + fadeOut(animationSpec = tween(180)),
                 ) {
                     FloatingBottomBar(
                         navController = navController,
                         destinations = bottomDestinations,
                         modulesBadge = modulesBadge,
                         repoBadge = repoBadge,
+                        onNavigateTopLevel = navigateTopLevel,
                         modifier = Modifier
                             .fillMaxWidth()
                             .navigationBarsPadding(),
@@ -564,11 +583,36 @@ private fun DisabledScreen(@StringRes text: Int) {
 }
 
 @Composable
+private fun AnimatedPage(content: @Composable () -> Unit) {
+    var visible by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        visible = true
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        AnimatedVisibility(
+            visible = visible,
+            modifier = Modifier.fillMaxSize(),
+            enter = fadeIn(animationSpec = tween(durationMillis = 220)) +
+                slideInVertically(
+                    animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+                    initialOffsetY = { it / 18 },
+                ),
+            exit = fadeOut(animationSpec = tween(durationMillis = 140)),
+        ) {
+            content()
+        }
+    }
+}
+
+@Composable
 private fun FloatingBottomBar(
     navController: NavController,
     destinations: List<BottomBarDestination>,
     modulesBadge: Int,
     repoBadge: Int,
+    onNavigateTopLevel: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -577,7 +621,7 @@ private fun FloatingBottomBar(
     val selectedIndex = destinations.indexOfFirst { it.route == currentRoute }.coerceAtLeast(0)
     val animatedSelected by animateFloatAsState(
         targetValue = selectedIndex.toFloat(),
-        animationSpec = spring(),
+        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
         label = "nav-selection",
     )
 
@@ -593,10 +637,11 @@ private fun FloatingBottomBar(
                 .padding(horizontal = 18.dp, vertical = 12.dp),
             contentAlignment = Alignment.Center,
         ) {
+            val barShape = RoundedCornerShape(28.dp)
             Surface(
                 tonalElevation = 3.dp,
                 shadowElevation = 8.dp,
-                shape = MaterialTheme.shapes.large,
+                shape = barShape,
             ) {
                 Box(
                     modifier = Modifier
@@ -629,6 +674,7 @@ private fun FloatingBottomBar(
                     ) {
                         destinations.forEachIndexed { index, destination ->
                             val selected = index == selectedIndex
+                            val enabled = destination.enabled
                             val badgeCount = when (destination.route) {
                                 Routes.MODULES -> modulesBadge
                                 Routes.REPO -> repoBadge
@@ -640,12 +686,8 @@ private fun FloatingBottomBar(
                                     .size(itemSize)
                                     .clip(MaterialTheme.shapes.large)
                                     .clickable {
-                                        if (destination.route != currentRoute) {
-                                            navController.navigate(destination.route) {
-                                                launchSingleTop = true
-                                                restoreState = true
-                                                popUpTo(Routes.HOME) { saveState = true }
-                                            }
+                                        if (enabled && destination.route != currentRoute) {
+                                            onNavigateTopLevel(destination.route)
                                         }
                                     },
                                 contentAlignment = Alignment.Center,
@@ -660,7 +702,11 @@ private fun FloatingBottomBar(
                                     Icon(
                                         imageVector = if (selected) destination.selectedIcon else destination.unselectedIcon,
                                         contentDescription = stringResourceCompat(destination.label),
-                                        tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        tint = when {
+                                            !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+                                            selected -> MaterialTheme.colorScheme.primary
+                                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                        },
                                     )
                                 }
                             }
@@ -675,7 +721,6 @@ private fun FloatingBottomBar(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun HomeScreen(
-    onOpenIssue: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToModules: () -> Unit,
     onNavigateToRepo: () -> Unit,
@@ -741,8 +786,8 @@ private fun HomeScreen(
                     IconButton(onClick = { showAbout = true }) {
                         Icon(Icons.Filled.Info, contentDescription = null)
                     }
-                    IconButton(onClick = onOpenIssue) {
-                        Icon(Icons.Filled.BugReport, contentDescription = null)
+                    IconButton(onClick = onNavigateToSettings) {
+                        Icon(Icons.Filled.Settings, contentDescription = null)
                     }
                 },
             )
@@ -756,7 +801,7 @@ private fun HomeScreen(
                 .padding(horizontal = 16.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            ElevatedCard {
+            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(text = statusTitle, style = MaterialTheme.typography.titleLarge, color = statusColor)
                     Text(text = statusSummary, style = MaterialTheme.typography.bodyMedium)
@@ -791,6 +836,7 @@ private fun HomeScreen(
                 ElevatedCard(
                     modifier = Modifier
                         .weight(1f)
+                        .heightIn(min = 92.dp)
                         .clickable(onClick = onNavigateToModules),
                 ) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -810,6 +856,7 @@ private fun HomeScreen(
                 ElevatedCard(
                     modifier = Modifier
                         .weight(1f)
+                        .heightIn(min = 92.dp)
                         .clickable(onClick = onNavigateToRepo),
                 ) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -824,18 +871,6 @@ private fun HomeScreen(
             }
 
             DeviceInfoCard()
-
-            ElevatedCard(
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = stringResourceCompat(R.string.Settings), style = MaterialTheme.typography.titleMedium)
-                    Text(text = stringResourceCompat(R.string.settings_group_theme), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Button(onClick = onNavigateToSettings) {
-                        Text(stringResourceCompat(R.string.Settings))
-                    }
-                }
-            }
         }
     }
 
@@ -992,16 +1027,20 @@ private fun ModulesScreen(
         selectedTabIndex = 0
     }
 
-    val moduleList = remember(refreshToken, selectedTabIndex, search) {
-        val all = moduleUtil.modules?.values?.toList().orEmpty()
-        val targetUser = users.getOrNull(selectedTabIndex)?.id
-        all.filter { targetUser == null || it.userId == targetUser }
-            .filter {
-                if (search.isBlank()) true
-                else it.getAppName().contains(search, ignoreCase = true) || it.packageName.contains(search, ignoreCase = true)
-            }
-            .sortedBy { it.getAppName().lowercase(Locale.ROOT) }
+    val moduleListResult = remember(refreshToken, selectedTabIndex, search) {
+        runCatching {
+            val all = moduleUtil.modules?.values?.toList().orEmpty()
+            val targetUser = users.getOrNull(selectedTabIndex)?.id
+            all.filter { targetUser == null || it.userId == targetUser }
+                .filter {
+                    if (search.isBlank()) true
+                    else it.getAppName().contains(search, ignoreCase = true) || it.packageName.contains(search, ignoreCase = true)
+                }
+                .sortedBy { it.getAppName().lowercase(Locale.ROOT) }
+        }
     }
+    val moduleList = moduleListResult.getOrElse { emptyList() }
+    val moduleListError = moduleListResult.exceptionOrNull()
 
     Scaffold(
         topBar = {
@@ -1052,6 +1091,23 @@ private fun ModulesScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         CircularProgressIndicator()
                         Text(stringResourceCompat(R.string.loading))
+                    }
+                }
+            } else if (moduleListError != null && moduleList.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = stringResourceCompat(R.string.Modules),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                text = moduleListError.message ?: "Failed to load modules",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
             } else {
@@ -2052,6 +2108,7 @@ private fun LogsScreen(
     var logs by remember { mutableStateOf<List<String>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var wordWrap by remember { mutableStateOf(App.getPreferences().getBoolean("enable_word_wrap", false)) }
+    val horizontalLogScroll = rememberScrollState()
 
     val saveLogsLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/zip"),
@@ -2100,6 +2157,12 @@ private fun LogsScreen(
 
     LaunchedEffect(selectedTab) {
         loadLogs()
+    }
+
+    LaunchedEffect(wordWrap, selectedTab) {
+        if (!wordWrap) {
+            horizontalLogScroll.scrollTo(0)
+        }
     }
 
     Scaffold(
@@ -2177,19 +2240,43 @@ private fun LogsScreen(
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
 
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                state = listState,
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                items(logs) { line ->
-                    Text(
-                        text = line,
-                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                        softWrap = wordWrap,
-                        modifier = if (!wordWrap) Modifier.horizontalScroll(rememberScrollState()) else Modifier,
-                    )
+            if (wordWrap) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    state = listState,
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    items(logs) { line ->
+                        Text(
+                            text = line,
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                            softWrap = true,
+                        )
+                    }
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .horizontalScroll(horizontalLogScroll),
+                ) {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .wrapContentWidth(),
+                        state = listState,
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        items(logs) { line ->
+                            Text(
+                                text = line,
+                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                softWrap = false,
+                            )
+                        }
+                    }
                 }
             }
         }
