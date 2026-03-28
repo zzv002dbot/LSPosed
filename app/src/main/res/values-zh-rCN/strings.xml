@@ -102,7 +102,9 @@ JingMatrix</string>
     <string name="no_min_version_specified">该模块未指定所需的 Xposed 版本</string>
     <string name="warning_min_version_too_low">由于该模块开发时所基于 Xposed %1$d 版本不再兼容 %2$d 版本中的变更，该模块现已被停用</string>
     <string name="warning_installed_on_external_storage">此模块因被安装在 SD 卡中而导致无法加载，请将其移动到内部存储</string>
+    <string name="warning">警告</string>
     <string name="module_uninstall">卸载</string>
+    <string name="menu_uninstall">@string/module_uninstall</string>
     <string name="module_settings">模块设置</string>
     <string name="view_in_repo">在仓库中查看</string>
     <string name="module_uninstall_message">确认卸载该模块？</string>
@@ -117,9 +119,11 @@ JingMatrix</string>
     <string name="collapse">收起</string>
     <!-- AppListActivity -->
     <string name="compile_speed">重新优化</string>
+    <string name="menu_compile_speed">@string/compile_speed</string>
     <string name="compile_speed_msg">优化中…</string>
     <string name="compile_done">优化完成</string>
     <string name="app_launch">启动</string>
+    <string name="menu_launch">@string/app_launch</string>
     <string name="compile_failed">优化失败：返回值为空</string>
     <string name="compile_failed_with_info">优化失败：</string>
     <string name="sort_by_name">应用名</string>
@@ -142,7 +146,10 @@ JingMatrix</string>
     <string name="use_recommended_message">选择推荐的应用？</string>
     <string name="menu_select_all">全部</string>
     <string name="menu_select_none">空</string>
+    <string name="select_all">@string/menu_select_all</string>
+    <string name="select_none">@string/menu_select_none</string>
     <string name="menu_auto_include">自动添加</string>
+    <string name="scope">作用域</string>
     <string name="module_is_not_activated_yet">Xposed 模块尚未激活</string>
     <string name="requested_by_module">推荐应用</string>
     <string name="update_available">可用更新：%1$s</string>
@@ -152,6 +159,7 @@ JingMatrix</string>
     <string name="menu_backup">备份</string>
     <string name="menu_restore">恢复</string>
     <string name="force_stop">强行停止</string>
+    <string name="menu_force_stop">@string/force_stop</string>
     <string name="force_stop_dlg_title">要强行停止吗？</string>
     <string name="force_stop_dlg_text">强行停止某个应用可能会使其异常。</string>
     <string name="reboot_required">重启以应用此更改</string>
@@ -162,6 +170,7 @@ JingMatrix</string>
     <!-- ModulesActivity and AppListActivity -->
     <string name="modules_other_app">在其它应用中查看</string>
     <string name="module_app_info">应用信息</string>
+    <string name="menu_app_info">@string/module_app_info</string>
     <string name="list_empty">¯\\\\_(ツ)_\/¯\n空空如也</string>
     <!-- SettingsActivity -->
     <string name="settings_group_framework">框架</string>
@@ -213,10 +222,22 @@ JingMatrix</string>
     <string name="module_information_collaborators">协作者</string>
     <string name="module_release_view_assets">附件</string>
     <string name="menu_open_in_browser">在浏览器中打开</string>
+    <string name="open_in_browser">@string/menu_open_in_browser</string>
+    <string name="module_release">版本</string>
     <string name="module_release_load_more">显示较早版本</string>
     <string name="module_release_no_more">无更多版本</string>
     <string name="repo_load_failed">模块仓库加载失败：%s</string>
     <string name="sort_upgradable_first">可更新优先</string>
+    <string name="available">可用</string>
+    <string name="unavailable">不可用</string>
+    <string name="verbose_log">@string/nav_item_logs_verbose</string>
+    <string name="modules_log">@string/nav_item_logs_module</string>
+    <string name="info_copy">复制</string>
+    <string name="dark_theme">深色主题</string>
+    <string name="dark_theme_off">关闭</string>
+    <string name="dark_theme_on">开启</string>
+    <string name="dark_theme_follow_system">跟随系统</string>
+    <string name="search_go">搜索</string>
     <string name="installed">已安装</string>
     <plurals name="module_release_assets_download_count">
         <item quantity="other">%d 次下载</item>

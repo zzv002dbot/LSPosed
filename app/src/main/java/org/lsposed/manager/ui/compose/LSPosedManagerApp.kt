@@ -36,13 +36,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.calculateBottomPadding
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -532,7 +532,7 @@ fun LSPosedManagerApp(
                         repoBadge = repoBadge,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(bottom = WindowInsets.safeDrawing.asPaddingValues().calculateBottomPadding()),
+                            .navigationBarsPadding(),
                     )
                 }
             }
@@ -714,7 +714,7 @@ private fun HomeScreen(
         }
 
         statusSummary = String.format(
-            LocaleDelegate.getDefaultLocale(),
+            LocaleDelegate.defaultLocale,
             "%s (%d) - %s",
             ConfigManager.getXposedVersionName(),
             ConfigManager.getXposedVersionCode(),
@@ -1273,9 +1273,10 @@ private fun ModuleCard(
 @Composable
 private fun AppIconView(packageInfo: PackageInfo) {
     val context = LocalContext.current
-    val icon = remember(packageInfo.packageName, packageInfo.applicationInfo.uid) {
+    val uid = packageInfo.applicationInfo?.uid ?: -1
+    val icon = remember(packageInfo.packageName, uid) {
         runCatching {
-            packageInfo.applicationInfo.loadIcon(context.packageManager)
+            packageInfo.applicationInfo?.loadIcon(context.packageManager)
         }.getOrNull()
     }
     AndroidView(
@@ -2266,7 +2267,7 @@ private fun SettingsScreen(
                         Text(
                             if (installed) {
                                 String.format(
-                                    LocaleDelegate.getDefaultLocale(),
+                                    LocaleDelegate.defaultLocale,
                                     "%s (%d) - %s",
                                     ConfigManager.getXposedVersionName(),
                                     ConfigManager.getXposedVersionCode(),
@@ -2274,7 +2275,7 @@ private fun SettingsScreen(
                                 )
                             } else {
                                 String.format(
-                                    LocaleDelegate.getDefaultLocale(),
+                                    LocaleDelegate.defaultLocale,
                                     "%s (%d) - %s",
                                     BuildConfig.VERSION_NAME,
                                     BuildConfig.VERSION_CODE,
@@ -2298,7 +2299,7 @@ private fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             SettingsSection(title = stringResourceCompat(R.string.group_network)) {
-                val dns = App.getOkHttpClient().dns() as? CloudflareDNS
+                val dns = App.getOkHttpClient().dns as? CloudflareDNS
                 val showDoh = dns?.noProxy == true
                 if (showDoh) {
                     SettingsSwitchItem(
@@ -2336,7 +2337,7 @@ private fun SettingsScreen(
                         val res = App.getInstance().resources
                         val config = res.configuration
                         config.setLocale(locale)
-                        LocaleDelegate.setDefaultLocale(locale)
+                        LocaleDelegate.defaultLocale = locale
                         @Suppress("DEPRECATION")
                         res.updateConfiguration(config, res.displayMetrics)
                         activity.restart()
@@ -2687,7 +2688,7 @@ private fun SearchTopBar(
                     onValueChange = onQueryChange,
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().padding(end = if (onBack == null) 14.dp else 0.dp),
-                    placeholder = { Text(stringResourceCompat(android.R.string.search_go)) },
+                    placeholder = { Text(stringResourceCompat(R.string.search_go)) },
                 )
             } else {
                 Column {
@@ -2758,8 +2759,6 @@ private fun parseInstantOrZero(raw: String?): Instant {
     return runCatching { Instant.parse(raw) }.getOrElse { Instant.EPOCH }
 }
 
-@Composable
 private fun stringResourceCompat(@StringRes id: Int, vararg args: Any): String {
-    val context = LocalContext.current
-    return context.getString(id, *args)
+    return App.getInstance().getString(id, *args)
 }

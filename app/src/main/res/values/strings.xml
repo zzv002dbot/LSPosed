@@ -103,7 +103,9 @@
     <string name="no_min_version_specified">This module does not specify the Xposed version it needs.</string>
     <string name="warning_min_version_too_low">This module was created for Xposed version %1$d, but due to incompatible changes in version %2$d, it has been disabled</string>
     <string name="warning_installed_on_external_storage">This module cannot be loaded because it\'s installed on the SD card, please move it to internal storage</string>
+    <string name="warning">Warning</string>
     <string name="module_uninstall">Uninstall</string>
+    <string name="menu_uninstall">@string/module_uninstall</string>
     <string name="module_settings">Module settings</string>
     <string name="view_in_repo">View in Repo</string>
     <string name="module_uninstall_message">Do you want to uninstall this module?</string>
@@ -118,9 +120,11 @@
     <string name="collapse">collapse</string>
     <!-- AppListActivity -->
     <string name="compile_speed">Re-optimize</string>
+    <string name="menu_compile_speed">@string/compile_speed</string>
     <string name="compile_speed_msg">Optimizing…</string>
     <string name="compile_done">Optimization complete</string>
     <string name="app_launch">Launch it</string>
+    <string name="menu_launch">@string/app_launch</string>
     <string name="compile_failed">Optimization failed: return value is empty</string>
     <string name="compile_failed_with_info">Optimization failed: </string>
     <string name="sort_by_name">Application name</string>
@@ -143,7 +147,10 @@
     <string name="use_recommended_message">Select recommended apps?</string>
     <string name="menu_select_all">All</string>
     <string name="menu_select_none">None</string>
+    <string name="select_all">@string/menu_select_all</string>
+    <string name="select_none">@string/menu_select_none</string>
     <string name="menu_auto_include">Auto-Include</string>
+    <string name="scope">Scope</string>
     <string name="module_is_not_activated_yet">Xposed module is not activated yet</string>
     <string name="requested_by_module">Recommended</string>
     <string name="update_available">Update available: %1$s</string>
@@ -153,6 +160,7 @@
     <string name="menu_backup">Backup</string>
     <string name="menu_restore">Restore</string>
     <string name="force_stop">Force stop</string>
+    <string name="menu_force_stop">@string/force_stop</string>
     <string name="force_stop_dlg_title">Force stop?</string>
     <string name="force_stop_dlg_text">If you force stop an app, it may misbehave.</string>
     <string name="reboot_required">Reboot is required for this change to apply</string>
@@ -163,6 +171,7 @@
     <!-- ModulesActivity and AppListActivity -->
     <string name="modules_other_app">View in other app</string>
     <string name="module_app_info">App info</string>
+    <string name="menu_app_info">@string/module_app_info</string>
     <string name="list_empty">¯\\_(ツ)_\/¯\nNothing here</string>
     <!-- SettingsActivity -->
     <string name="settings_group_framework">Framework</string>
@@ -214,10 +223,22 @@
     <string name="module_information_collaborators">Collaborators</string>
     <string name="module_release_view_assets">Assets</string>
     <string name="menu_open_in_browser">Open in browser</string>
+    <string name="open_in_browser">@string/menu_open_in_browser</string>
+    <string name="module_release">Release</string>
     <string name="module_release_load_more">Show older versions</string>
     <string name="module_release_no_more">No more release</string>
     <string name="repo_load_failed">Failed to load module repo: %s</string>
     <string name="sort_upgradable_first">Upgradable first</string>
+    <string name="available">Available</string>
+    <string name="unavailable">Unavailable</string>
+    <string name="verbose_log">@string/nav_item_logs_verbose</string>
+    <string name="modules_log">@string/nav_item_logs_module</string>
+    <string name="info_copy">Copy</string>
+    <string name="dark_theme">Dark theme</string>
+    <string name="dark_theme_off">Off</string>
+    <string name="dark_theme_on">On</string>
+    <string name="dark_theme_follow_system">Follow system</string>
+    <string name="search_go">Search</string>
     <string name="installed">Installed</string>
     <plurals name="module_release_assets_download_count">
         <item quantity="one">%d download</item>

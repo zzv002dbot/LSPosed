@@ -25,8 +25,8 @@ class MainActivity : BaseActivity() {
     private var pendingNavigation: ExternalNavigation? by mutableStateOf(null)
 
     companion object {
-        private const val KEY_PREFIX = "${MainActivity::class.java.name}."
-        private const val EXTRA_SAVED_INSTANCE_STATE = KEY_PREFIX + "SAVED_INSTANCE_STATE"
+        private val KEY_PREFIX = "${MainActivity::class.java.name}."
+        private val EXTRA_SAVED_INSTANCE_STATE = KEY_PREFIX + "SAVED_INSTANCE_STATE"
 
         @JvmStatic
         fun newIntent(context: Context): Intent = Intent(context, MainActivity::class.java)
@@ -63,7 +63,7 @@ class MainActivity : BaseActivity() {
         }
     }
 
-    override fun onNewIntent(intent: Intent?) {
+    override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleIntent(intent)
     }
