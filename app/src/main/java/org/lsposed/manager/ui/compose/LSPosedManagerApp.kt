@@ -319,6 +319,7 @@ fun LSPosedManagerApp(
 
         val binderAlive = remember(uiTick) { ConfigManager.isBinderAlive() }
         val magiskInstalled = remember(uiTick) { ConfigManager.isMagiskInstalled() }
+        val repoLoaded = remember(uiTick) { repoLoader.isRepoLoaded }
 
         val bottomDestinations = remember(binderAlive, magiskInstalled, modulesBadge, repoBadge) {
             listOf(
@@ -331,14 +332,14 @@ fun LSPosedManagerApp(
                 ),
                 BottomBarDestination(
                     route = Routes.MODULES,
-                    enabled = binderAlive,
+                    enabled = true,
                     label = R.string.Modules,
                     selectedIcon = Icons.Filled.Extension,
                     unselectedIcon = Icons.Outlined.Extension,
                 ),
                 BottomBarDestination(
                     route = Routes.REPO,
-                    enabled = magiskInstalled,
+                    enabled = true,
                     label = R.string.module_repo,
                     selectedIcon = Icons.Filled.CloudDownload,
                     unselectedIcon = Icons.Filled.CloudDownload,
@@ -398,15 +399,7 @@ fun LSPosedManagerApp(
                 }
             }
 
-            if (route == Routes.MODULES && !binderAlive) {
-                onNavigationConsumed()
-                return@LaunchedEffect
-            }
             if (route == Routes.LOGS && !binderAlive) {
-                onNavigationConsumed()
-                return@LaunchedEffect
-            }
-            if (route == Routes.REPO && !magiskInstalled) {
                 onNavigationConsumed()
                 return@LaunchedEffect
             }
@@ -437,13 +430,12 @@ fun LSPosedManagerApp(
                     composable(Routes.HOME) {
                         AnimatedPage {
                             HomeScreen(
+                                binderAlive = binderAlive,
+                                magiskInstalled = magiskInstalled,
+                                repoLoaded = repoLoaded,
                                 onNavigateToSettings = { navigateTopLevel(Routes.SETTINGS) },
-                                onNavigateToModules = {
-                                    if (binderAlive) navigateTopLevel(Routes.MODULES)
-                                },
-                                onNavigateToRepo = {
-                                    if (magiskInstalled) navigateTopLevel(Routes.REPO)
-                                },
+                                onNavigateToModules = { navigateTopLevel(Routes.MODULES) },
+                                onNavigateToRepo = { navigateTopLevel(Routes.REPO) },
                                 modulesEnabledCount = modulesBadge,
                             )
                         }
@@ -468,15 +460,11 @@ fun LSPosedManagerApp(
 
                     composable(Routes.REPO) {
                         AnimatedPage {
-                            if (!magiskInstalled) {
-                                DisabledScreen(R.string.install_summary)
-                            } else {
-                                RepoScreen(
-                                    activity = activity,
-                                    onOpenRepoItem = { pkg -> navController.navigate(Routes.repoItem(pkg)) },
-                                    snackbarHostState = snackbarHostState,
-                                )
-                            }
+                            RepoScreen(
+                                activity = activity,
+                                onOpenRepoItem = { pkg -> navController.navigate(Routes.repoItem(pkg)) },
+                                snackbarHostState = snackbarHostState,
+                            )
                         }
                     }
 
@@ -721,14 +709,15 @@ private fun FloatingBottomBar(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun HomeScreen(
+    binderAlive: Boolean,
+    magiskInstalled: Boolean,
+    repoLoaded: Boolean,
     onNavigateToSettings: () -> Unit,
     onNavigateToModules: () -> Unit,
     onNavigateToRepo: () -> Unit,
     modulesEnabledCount: Int,
 ) {
     val context = LocalContext.current
-    val binderAlive = remember { ConfigManager.isBinderAlive() }
-    val magiskInstalled = remember { ConfigManager.isMagiskInstalled() }
 
     var showAbout by remember { mutableStateOf(false) }
 
@@ -862,7 +851,7 @@ private fun HomeScreen(
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(text = stringResourceCompat(R.string.module_repo), style = MaterialTheme.typography.titleMedium)
                         Text(
-                            text = if (ConfigManager.isMagiskInstalled()) stringResourceCompat(R.string.available) else stringResourceCompat(R.string.unavailable),
+                            text = if (repoLoaded) stringResourceCompat(R.string.available) else stringResourceCompat(R.string.loading),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -944,7 +933,7 @@ private fun DeviceInfoCard() {
         appendLine(Arrays.toString(Build.SUPPORTED_ABIS))
     }
 
-    ElevatedCard {
+    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(text = stringResourceCompat(R.string.overview), style = MaterialTheme.typography.titleMedium)
             InfoRow(stringResourceCompat(R.string.info_api_version), ConfigManager.getXposedApiVersion().toString())
@@ -1682,6 +1671,7 @@ private fun RepoScreen(
 
     val sortMode = remember(refreshToken) { prefs.getInt("repo_sort", 0) }
     val upgradableFirst = remember(refreshToken) { prefs.getBoolean("upgradable_first", true) }
+    val repoIsLoaded = remember(refreshToken) { repoLoader.isRepoLoaded }
     val channel = remember(refreshToken) {
         prefs.getString("update_channel", activity.resources.getStringArray(R.array.update_channel_values).first())
             ?: activity.resources.getStringArray(R.array.update_channel_values).first()
@@ -1762,7 +1752,14 @@ private fun RepoScreen(
             )
         },
     ) { innerPadding ->
-        if (list.isEmpty()) {
+        if (!repoIsLoaded) {
+            Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CircularProgressIndicator()
+                    Text(stringResourceCompat(R.string.loading))
+                }
+            }
+        } else if (list.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
                 Text(stringResourceCompat(R.string.list_empty))
             }
@@ -2298,7 +2295,6 @@ private fun SettingsScreen(
     var enableLogWatchdog by remember(refreshToken) { mutableStateOf(ConfigManager.isLogWatchdogEnabled()) }
     var dexObfuscate by remember(refreshToken) { mutableStateOf(ConfigManager.isDexObfuscateEnabled()) }
     var statusNotification by remember(refreshToken) { mutableStateOf(ConfigManager.enableStatusNotification()) }
-    var followSystemAccent by remember(refreshToken) { mutableStateOf(prefs.getBoolean("follow_system_accent", true)) }
     var blackDarkTheme by remember(refreshToken) { mutableStateOf(prefs.getBoolean("black_dark_theme", false)) }
     var darkThemeMode by remember(refreshToken) {
         mutableStateOf(prefs.getString("dark_theme", ThemeUtil.MODE_NIGHT_FOLLOW_SYSTEM) ?: ThemeUtil.MODE_NIGHT_FOLLOW_SYSTEM)
@@ -2450,18 +2446,6 @@ private fun SettingsScreen(
             }
 
             SettingsSection(title = stringResourceCompat(R.string.settings_group_theme)) {
-                SettingsSwitchItem(
-                    title = stringResourceCompat(R.string.theme_color_system),
-                    summary = null,
-                    icon = Icons.Filled.ColorLens,
-                    checked = followSystemAccent,
-                    onCheckedChange = {
-                        followSystemAccent = it
-                        prefs.edit { putBoolean("follow_system_accent", it) }
-                        activity.restart()
-                    },
-                )
-
                 val darkEntries = listOf(
                     ThemeUtil.MODE_NIGHT_FOLLOW_SYSTEM to stringResourceCompat(R.string.dark_theme_follow_system),
                     ThemeUtil.MODE_NIGHT_NO to stringResourceCompat(R.string.dark_theme_off),
@@ -2491,7 +2475,7 @@ private fun SettingsScreen(
                     },
                 )
 
-                if (!followSystemAccent) {
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
                     val colorValues = activity.resources.getStringArray(R.array.color_values).toList()
                     val colorTexts = activity.resources.getStringArray(R.array.color_texts).toList()
                     SettingsDropdownItem(
@@ -2504,6 +2488,14 @@ private fun SettingsScreen(
                             prefs.edit { putString("theme_color", it) }
                             activity.restart()
                         },
+                    )
+                } else {
+                    SettingsActionItem(
+                        title = stringResourceCompat(R.string.theme_color_system),
+                        summary = activity.getString(rikka.core.R.string.follow_system),
+                        icon = Icons.Filled.ColorLens,
+                        enabled = false,
+                        onClick = {},
                     )
                 }
             }
@@ -2647,7 +2639,10 @@ private fun SettingsSection(
     title: String,
     content: @Composable () -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+    ) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             content()
@@ -2664,7 +2659,10 @@ private fun SettingsSwitchItem(
     enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit,
 ) {
-    ElevatedCard(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.elevatedCardColors(containerColor = Color.Transparent)) {
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHighest),
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -2697,7 +2695,7 @@ private fun SettingsActionItem(
             .fillMaxWidth()
             .graphicsLayer(alpha = if (enabled) 1f else 0.5f)
             .clickable(enabled = enabled, onClick = onClick),
-        colors = CardDefaults.elevatedCardColors(containerColor = Color.Transparent),
+        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHighest),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
@@ -2729,7 +2727,7 @@ private fun SettingsDropdownItem(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { expanded = true },
-        colors = CardDefaults.elevatedCardColors(containerColor = Color.Transparent),
+        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHighest),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),

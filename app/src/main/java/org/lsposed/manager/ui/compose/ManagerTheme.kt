@@ -54,6 +54,7 @@ private fun palettePrimary(themeColor: String): Color = when (themeColor) {
 }
 
 @Composable
+@Suppress("UNUSED_PARAMETER")
 fun LSPosedComposeTheme(
     darkTheme: Boolean,
     followSystemAccent: Boolean,
@@ -76,7 +77,7 @@ fun LSPosedComposeTheme(
     )
 
     val colorScheme = when {
-        followSystemAccent && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
         darkTheme -> customDark
