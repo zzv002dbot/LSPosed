@@ -21,6 +21,8 @@ import java.time.Instant
 
 plugins {
     alias(libs.plugins.agp.app)
+    alias(libs.plugins.kotlin)
+    alias(libs.plugins.compose.compiler)
     alias(libs.plugins.nav.safeargs)
     alias(libs.plugins.autoresconfig)
     alias(libs.plugins.materialthemebuilder)
@@ -39,9 +41,12 @@ val defaultManagerPackageName: String by rootProject.extra
 
 android {
     buildFeatures {
+        compose = true
         viewBinding = true
         buildConfig = true
     }
+
+    kotlinOptions { jvmTarget = "21" }
 
     defaultConfig {
         applicationId = defaultManagerPackageName
@@ -120,15 +125,23 @@ materialThemeBuilder {
 dependencies {
     annotationProcessor(libs.glide.compiler)
     implementation(libs.androidx.activity)
+    implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.browser)
     implementation(libs.androidx.constraintlayout)
     implementation(libs.androidx.core)
     implementation(libs.androidx.fragment)
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.navigation.fragment)
     implementation(libs.androidx.navigation.ui)
     implementation(libs.androidx.preference)
     implementation(libs.androidx.recyclerview)
     implementation(libs.androidx.swiperefreshlayout)
+    implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material.icons.extended)
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.glide)
     implementation(libs.material)
     implementation(libs.gson)
@@ -149,6 +162,7 @@ dependencies {
     implementation(libs.kotlin.stdlib)
     implementation(libs.kotlinx.coroutines.core)
     implementation(projects.services.managerService)
+    debugImplementation(libs.androidx.compose.ui.tooling)
 }
 
 configurations.all {

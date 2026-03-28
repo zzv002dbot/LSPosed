@@ -11,6 +11,7 @@ ktfmt = "0.25.0"
 agp-lib = { id = "com.android.library", version.ref = "agp" }
 agp-app = { id = "com.android.application", version.ref = "agp" }
 kotlin = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 nav-safeargs = { id = "androidx.navigation.safeargs", version.ref = "nav" }
 autoresconfig = { id = "dev.rikka.tools.autoresconfig", version = "1.2.2" }
 ktfmt = { id = "com.ncorti.ktfmt.gradle", version.ref = "ktfmt" }
@@ -31,16 +32,25 @@ rikkax-widget-borderview = { module = "dev.rikka.rikkax.widget:borderview", vers
 rikkax-widget-mainswitchbar = { module = "dev.rikka.rikkax.widget:mainswitchbar", version = "1.0.2" }
 
 androidx-activity = { module = "androidx.activity:activity", version = "1.12.4" }
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version = "1.12.4" }
 androidx-annotation = { module = "androidx.annotation:annotation", version = "1.9.1" }
 androidx-browser = { module = "androidx.browser:browser", version = "1.9.0" }
 androidx-constraintlayout = { module = "androidx.constraintlayout:constraintlayout", version = "2.2.1" }
 androidx-core = { module = "androidx.core:core", version = "1.17.0" }
 androidx-fragment = { module = "androidx.fragment:fragment", version = "1.8.9" }
+androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version = "2.9.4" }
 androidx-navigation-fragment = { group = "androidx.navigation", name = "navigation-fragment", version.ref = "nav" }
+androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "nav" }
 androidx-navigation-ui = { group = "androidx.navigation", name = "navigation-ui", version.ref = "nav" }
 androidx-preference = { module = "androidx.preference:preference", version = "1.2.1" }
 androidx-recyclerview = { module = "androidx.recyclerview:recyclerview", version = "1.4.0" }
 androidx-swiperefreshlayout = { module = "androidx.swiperefreshlayout:swiperefreshlayout", version = "1.2.0" }
+androidx-compose-bom = { module = "androidx.compose:compose-bom", version = "2024.12.01" }
+androidx-compose-material3 = { module = "androidx.compose.material3:material3" }
+androidx-compose-material-icons-extended = { module = "androidx.compose.material:material-icons-extended" }
+androidx-compose-ui = { module = "androidx.compose.ui:ui" }
+androidx-compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
+androidx-compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
 
 glide = { group = "com.github.bumptech.glide", name = "glide", version.ref = "glide" }
 glide-compiler = { group = "com.github.bumptech.glide", name = "compiler", version.ref = "glide" }
