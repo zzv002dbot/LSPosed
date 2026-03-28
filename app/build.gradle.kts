@@ -169,7 +169,7 @@ dependencies {
 }
 
 configurations.all {
-    exclude("org.jetbrains", "annotations")
+    // Kotlin codegen needs org.jetbrains.annotations.*; excluding it can trigger compiler ICE.
     exclude("androidx.appcompat", "appcompat")
     exclude("org.jetbrains.kotlin", "kotlin-stdlib-jdk7")
     exclude("org.jetbrains.kotlin", "kotlin-stdlib-jdk8")
